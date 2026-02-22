@@ -1,90 +1,81 @@
-# --- Logic for Stock Scanner ---
-
-def scan_stocks(data_15m, data_daily):
-    # 1. Define Opening Range (First 15-min candle)
-    or_high = data_15m['high'].iloc[0]
-    or_low = data_15m['low'].iloc[0]
-    current_price = data_15m['close'].iloc[-1]
-    
-    # 2. Indicators
-    rsi_15 = calculate_rsi(data_15m, period=14)
-    sma_20 = calculate_sma(data_15m, period=20)
-    pivot = (data_daily['high'] + data_daily['low'] + data_daily['close']) / 3
-    
-    # 3. Previous Day Levels
-    pdh = data_daily['high'].iloc[-1]
-    pdl = data_daily['low'].iloc[-1]
-    pdl_upper_limit = pdl * 1.01  # 1% range above PDL
-    
-    # --- BULLISH CONDITION ---
-    is_bullish = (
-        current_price > or_high and
-        (rsi_15 > 60 or (35 <= rsi_15 <= 45)) and
-        (current_price > pdh or (pdl <= current_price <= pdl_upper_limit)) and
-        current_price >= (sma_20 * 0.998) and # "Near" 20 SMA
-        current_price > pivot
-    )
-    
-    # --- BEARISH CONDITION ---
-    is_bearish = (
-        current_price < or_low and
-        (rsi_15 < 40 or (55 <= rsi_15 <= 65)) and
-        (current_price < pdl or (pdh >= current_price >= pdh * 0.99)) and
-        current_price <= (sma_20 * 1.002) and
-        current_price < pivot)
-    
-    return is_bullish, is_bearish
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
-from datetime import datetime
+import time
 
-# 1. स्टॉक लिस्ट (अपने पसंदीदा स्टॉक्स यहाँ डालें)
-stocks = ["RELIANCE.NS", "TCS.NS", "SBIN.NS", "HDFCBANK.NS"]
+# --- कॉन्फ़िगरेशन ---
+STOCKS = ["RELIANCE.NS", "TCS.NS", "SBIN.NS", "HDFCBANK.NS", "INFY.NS"]
 
 def scan():
-    for symbol in stocks:
-        print(f"--- Scanning {symbol} ---")
-        
-        # डेटा डाउनलोड (5 दिन का 15 मिनट डेटा)
-        df = yf.download(symbol, period="5d", interval="15m")
-        daily = yf.download(symbol, period="5d", interval="1d")
+    print(f"--- Scan Started: {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+    
+    for symbol in STOCKS:
+        try:
+            # 1. डेटा डाउनलोड (15 min for ORB and 1 Day for Pivot)
+            # auto_adjust=True ताकि डेटा क्लीन मिले
+            df = yf.download(symbol, period="5d", interval="15m", auto_adjust=True)
+            daily = yf.download(symbol, period="5d", interval="1d", auto_adjust=True)
 
-        if len(df) < 20: 
-            print(f"Skipping {symbol}: Not enough data.")
-            continue
+            if df.empty or len(df) < 20:
+                print(f"Skipping {symbol}: Not enough data.")
+                continue
 
-        # इंडिकेटर्स
-        df['RSI'] = ta.rsi(df['Close'], length=14)
-        df['SMA20'] = ta.sma(df['Close'], length=20)
-        
-        # आज का डेटा और Opening Range
-        today = df.index[-1].date()
-        today_df = df[df.index.date == today]
-        
-        if len(today_df) == 0:
-            print("Market not open yet for today.")
-            continue
+            # 2. इंडिकेटर्स
+            df['RSI'] = ta.rsi(df['Close'], length=14)
+            df['SMA20'] = ta.sma(df['Close'], length=20)
 
-        or_high = today_df['High'].iloc[0]
-        or_low = today_df['Low'].iloc[0]
-        
-        # डेली पिवट (कल के डेटा से)
-        pdh, pdl, pdc = daily['High'].iloc[-2], daily['Low'].iloc[-2], daily['Close'].iloc[-2]
-        pivot = (pdh + pdl + pdc) / 3
+            # 3. आज का डेटा निकालें
+            today_date = df.index[-1].date()
+            today_df = df[df.index.date == today_date]
 
-        curr = df.iloc[-1] # लेटेस्ट कैंडल
-        
-        # --- BULLISH CHECK ---
-        rsi_ok = (curr['RSI'] > 60) or (35 <= curr['RSI'] <= 45)
-        price_above_or = curr['Close'] > or_high
-        above_pivot = curr['Close'] > pivot
-        near_sma = curr['Close'] >= (curr['SMA20'] * 0.998)
+            if today_df.empty:
+                print(f"Skipping {symbol}: Market data not available for today.")
+                continue
 
-        if price_above_or and rsi_ok and above_pivot and near_sma:
-            print(f"✅ BULLISH SIGNAL: {symbol} at {curr['Close']}")
-        else:
-            print(f"❌ No signal for {symbol}. (Price: {round(curr['Close'], 2)}, RSI: {round(curr['RSI'], 2)})")
+            # 4. Opening Range (पहली 15 मिनट की कैंडल)
+            or_high = today_df['High'].iloc[0]
+            or_low = today_df['Low'].iloc[0]
+
+            # 5. डेली लेवल्स (Previous Day)
+            pdh = daily['High'].iloc[-2]
+            pdl = daily['Low'].iloc[-2]
+            pdc = daily['Close'].iloc[-2]
+            pivot = (pdh + pdl + pdc) / 3
+
+            # 6. करंट वैल्यूज (नवीनतम कैंडल)
+            # यहाँ .item() का उपयोग किया है ताकि 'Series Ambiguous' एरर न आए
+            curr_close = df['Close'].iloc[-1]
+            curr_rsi = df['RSI'].iloc[-1]
+            curr_sma = df['SMA20'].iloc[-1]
+
+            # --- बुलिश लॉजिक (Breakout) ---
+            rsi_bullish = (curr_rsi > 60) or (35 <= curr_rsi <= 45)
+            near_pdl = (curr_close >= pdl) and (curr_close <= pdl * 1.01)
+            
+            is_bullish = (curr_close > or_high) and rsi_bullish and \
+                         (curr_close > pdh or near_pdl) and \
+                         (curr_close >= curr_sma * 0.998) and \
+                         (curr_close > pivot)
+
+            # --- बेयरिश लॉजिक (Breakdown) ---
+            rsi_bearish = (curr_rsi < 40) or (55 <= curr_rsi <= 65)
+            near_pdh = (curr_close <= pdh) and (curr_close >= pdh * 0.99)
+            
+            is_bearish = (curr_close < or_low) and rsi_bearish and \
+                         (curr_close < pdl or near_pdh) and \
+                         (curr_close <= curr_sma * 1.002) and \
+                         (curr_close < pivot)
+
+            # 7. रिजल्ट प्रिंट करें
+            if is_bullish:
+                print(f"🚀 BUY SIGNAL: {symbol} | Price: {round(curr_close, 2)} | RSI: {round(curr_rsi, 2)}")
+            elif is_bearish:
+                print(f"🔻 SELL SIGNAL: {symbol} | Price: {round(curr_close, 2)} | RSI: {round(curr_rsi, 2)}")
+            else:
+                print(f"Neutral: {symbol} (Price: {round(curr_close, 2)})")
+
+        except Exception as e:
+            print(f"Error scanning {symbol}: {e}")
 
 if __name__ == "__main__":
     scan()
