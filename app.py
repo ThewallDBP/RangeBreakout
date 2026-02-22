@@ -34,3 +34,57 @@ def scan_stocks(data_15m, data_daily):
         current_price < pivot)
     
     return is_bullish, is_bearish
+import yfinance as yf
+import pandas as pd
+import pandas_ta as ta
+from datetime import datetime
+
+# 1. स्टॉक लिस्ट (अपने पसंदीदा स्टॉक्स यहाँ डालें)
+stocks = ["RELIANCE.NS", "TCS.NS", "SBIN.NS", "HDFCBANK.NS"]
+
+def scan():
+    for symbol in stocks:
+        print(f"--- Scanning {symbol} ---")
+        
+        # डेटा डाउनलोड (5 दिन का 15 मिनट डेटा)
+        df = yf.download(symbol, period="5d", interval="15m")
+        daily = yf.download(symbol, period="5d", interval="1d")
+
+        if len(df) < 20: 
+            print(f"Skipping {symbol}: Not enough data.")
+            continue
+
+        # इंडिकेटर्स
+        df['RSI'] = ta.rsi(df['Close'], length=14)
+        df['SMA20'] = ta.sma(df['Close'], length=20)
+        
+        # आज का डेटा और Opening Range
+        today = df.index[-1].date()
+        today_df = df[df.index.date == today]
+        
+        if len(today_df) == 0:
+            print("Market not open yet for today.")
+            continue
+
+        or_high = today_df['High'].iloc[0]
+        or_low = today_df['Low'].iloc[0]
+        
+        # डेली पिवट (कल के डेटा से)
+        pdh, pdl, pdc = daily['High'].iloc[-2], daily['Low'].iloc[-2], daily['Close'].iloc[-2]
+        pivot = (pdh + pdl + pdc) / 3
+
+        curr = df.iloc[-1] # लेटेस्ट कैंडल
+        
+        # --- BULLISH CHECK ---
+        rsi_ok = (curr['RSI'] > 60) or (35 <= curr['RSI'] <= 45)
+        price_above_or = curr['Close'] > or_high
+        above_pivot = curr['Close'] > pivot
+        near_sma = curr['Close'] >= (curr['SMA20'] * 0.998)
+
+        if price_above_or and rsi_ok and above_pivot and near_sma:
+            print(f"✅ BULLISH SIGNAL: {symbol} at {curr['Close']}")
+        else:
+            print(f"❌ No signal for {symbol}. (Price: {round(curr['Close'], 2)}, RSI: {round(curr['RSI'], 2)})")
+
+if __name__ == "__main__":
+    scan()
