@@ -1,45 +1,36 @@
 import streamlit as st
 import yfinance as yf
-import pandas as pd
 
-# ૧. સ્ટોક સિલેક્શન (ઉદાહરણ તરીકે)
-symbol = st.text_input("Enter Stock Symbol (e.g. RELIANCE.NS)", "SBIN.NS")
+# ૧. સ્ટોક સિમ્બોલ ઇનપુટ
+symbol = st.text_input("Enter Symbol", "RELIANCE.NS")
 
-# ૨. ડેટા ફેચ કરવો (આના વગર 'df' એરર આવશે)
+# ૨. ડેટા ડાઉનલોડ (૧૫ મિનિટના ઇન્ટરવલ સાથે)
 data = yf.download(symbol, period="1d", interval="15m")
 
-if not data.empty:
-    # Multi-index ડેટાને સાફ કરવો
-    df = data.copy()
+# ચેક કરો કે ડેટા મળ્યો છે કે નહીં
+if not data.empty and len(data) > 0:
     
-    # પ્રથમ ૧૫ મિનિટની કેન્ડલનો High અને Low
-    first_15min_high = df.iloc[0]['High']
-    first_15min_low = df.iloc[0]['Low']
-    
-    # કરન્ટ પ્રાઈસ (LTP)
-    ltp = df.iloc[-1]['Close']
+    # ૩. વેરીએબલ અહીં ડિફાઇન (Define) કરો
+    first_15min_high = data.iloc[0]['High']
+    first_15min_low = data.iloc[0]['Low']
+    ltp = data.iloc[-1]['Close'] # લેટેસ્ટ પ્રાઈસ
 
+    # ૪. હવે આ લાઈન કામ કરશે કારણ કે ઉપર વેરીએબલ બની ગયા છે
     st.write(f"15 min High: {first_15min_high:.2f} | Low: {first_15min_low:.2f} | LTP: {ltp:.2f}")
 
-    # ૩. ફિલ્ટર સિલેક્શન
-    filter_choice = st.radio(
-        "Select Filter:",
-        ["All Stocks", "Stock Above 1st 15 min Candle", "Stock Below 1st 15 min Candle"]
-    )
+    # ૫. ફિલ્ટર લોજિક
+    filter_choice = st.radio("Filter", ["Above 15m Range", "Below 15m Range"])
 
-    # ૪. ફિલ્ટરિંગ લોજિક (અહીં 'df' મળી જશે)
-    if filter_choice == "Stock Above 1st 15 min Candle":
+    if filter_choice == "Above 15m Range":
         if ltp > first_15min_high:
-            st.success(f"🚀 {symbol} is Above 15 min range!")
+            st.success("🎯 Breakout Above!")
         else:
-            st.warning("Not in range")
+            st.info("Still in range")
             
-    elif filter_choice == "Stock Below 15 min Candle":
+    elif filter_choice == "Below 15m Range":
         if ltp < first_15min_low:
-            st.error(f"📉 {symbol} is Below 15 min range!")
+            st.error("📉 Breakdown Below!")
         else:
-            st.warning("Not in range")
-    else:
-        st.dataframe(df)
+            st.info("Still in range")
 else:
-    st.error("Data not found. Please check the symbol.")
+    st.error("Data not found. Please check your internet or symbol.")
