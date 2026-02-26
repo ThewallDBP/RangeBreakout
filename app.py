@@ -1,28 +1,26 @@
-import pandas as pd
-import plotly.graph_objects as go
+import streamlit as st
+import yfinance as ticker # અથવા જે લાઈબ્રેરી તમે વાપરતા હોવ
 
-def calculate_heikin_ashi(df):
-    ha_df = df.copy()
-    
-    # HA Close ની ગણતરી
-    ha_df['HA_Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
-    
-    # HA Open ની ગણતરી
-    ha_df['HA_Open'] = 0.0
-    ha_df.iloc[0, ha_df.columns.get_loc('HA_Open')] = (df.iloc[0]['Open'] + df.iloc[0]['Close']) / 2
-    
-    for i in range(1, len(df)):
-        ha_df.iloc[i, ha_df.columns.get_loc('HA_Open')] = (ha_df.iloc[i-1]['HA_Open'] + ha_df.iloc[i-1]['HA_Close']) / 2
-        
-    # HA High અને HA Low ની ગણતરી
-    ha_df['HA_High'] = ha_df[['High', 'HA_Open', 'HA_Close']].max(axis=1)
-    ha_df['HA_Low'] = ha_df[['Low', 'HA_Open', 'HA_Close']].min(axis=1)
-    
-    return ha_df
+# ૧. પ્રથમ ૧૫ મિનિટની રેન્જ મેળવવા માટેનું ફંક્શન
+def get_15min_range(df):
+    # ખાતરી કરો કે ડેટા ૧૫ મિનિટના ટાઈમફ્રેમમાં છે
+    first_candle = df.iloc[0] 
+    return first_candle['High'], first_candle['Low']
 
-# Streamlit માં ચાર્ટ બતાવવા માટે:
-# ha_data = calculate_heikin_ashi(your_stock_dataframe)
-# fig = go.Figure(data=[go.Candlestick(x=ha_data.index,
-#                 open=ha_data['HA_Open'], high=ha_data['HA_High'],
-#                 low=ha_data['HA_Low'], close=ha_data['HA_Close'])])
-# st.plotly_chart(fig)
+# ૨. ફિલ્ટર એપ્લાય કરવા માટેનો કોડ
+st.sidebar.title("Breakout Filters")
+filter_choice = st.sidebar.selectbox(
+    "Select Breakout Type:",
+    ["All Stocks", "Stock Above 1st 15 min Candle", "Stock Below 1st 15 min Candle"]
+)
+
+# ૩. ફિલ્ટરિંગ લોજિક
+if filter_choice == "Stock Above 1st 15 min Candle":
+    # જો LTP > 15 min High હોય તો જ બતાવો
+    filtered_df = df[df['LTP'] > df['15min_High']]
+    
+elif filter_choice == "Stock Below 15 min Candle":
+    # જો LTP < 15 min Low હોય તો જ બતાવો
+    filtered_df = df[df['LTP'] < df['15min_Low']]
+else:
+    filtered_df = df
