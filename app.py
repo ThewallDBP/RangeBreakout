@@ -8,7 +8,7 @@ import pandas_ta as ta
 st.set_page_config(page_title="Nifty Gann & ORB Scanner", layout="wide")
 st.title("📊 Nifty Gann Levels & Stock Scanner")
 
-# Sidebar for Ticker Input
+# Sidebar Input
 symbol = st.sidebar.text_input("Enter Ticker (NSE)", value="ITC.NS")
 
 def get_gann_levels(price):
@@ -22,12 +22,13 @@ def get_gann_levels(price):
     return pd.DataFrame(data), sqrt_price
 
 try:
-    # 7 દિવસનો ડેટા લેવો જેથી રજાના દિવસે પણ છેલ્લો ડેટા મળે
+    # છેલ્લી રજાઓ ધ્યાનમાં રાખીને 7 દિવસનો ડેટા લેવો
     df = yf.download(symbol, period="7d", interval="15m")
     
     if not df.empty:
-        # .item() અથવા .iloc[-1] નો ઉપયોગ કરીને ખાતરી કરવી કે તે સિંગલ વેલ્યુ જ છે
-        curr_price = float(df['Close'].iloc[-1])
+        # કિંમતને સુરક્ષિત રીતે ફ્લોટ નંબરમાં ફેરવવી
+        raw_price = df['Close'].iloc[-1]
+        curr_price = float(raw_price.iloc[0]) if hasattr(raw_price, 'iloc') else float(raw_price)
         
         # 1. Gann Analysis વિભાગ
         st.subheader(f"📐 Gann Analysis for {symbol}")
@@ -43,19 +44,26 @@ try:
         st.divider()
         st.subheader("🚀 Opening Range & Indicators Status")
 
-        # Indicators ગણતરી
+        # RSI ની ગણતરી અને સુરક્ષિત રીતે વેલ્યુ મેળવવી
         df['RSI'] = ta.rsi(df['Close'], length=14)
+        raw_rsi = df['RSI'].iloc[-1]
         
-        # છેલ્લી વેલ્યુ લેતી વખતે .iloc[-1] નો જ ઉપયોગ કરવો
-        c_rsi_series = df['RSI'].iloc[-1]
-        # જો હજુ પણ Series હોય તો તેને Float માં ફેરવવી
-        c_rsi = float(c_rsi_series.iloc[0]) if isinstance(c_rsi_series, pd.Series) else float(c_rsi_series)
+        # જો RSI હજુ ગણાઈ રહ્યો હોય (NaN હોય) તો તેની તપાસ
+        if pd.isna(raw_rsi):
+            c_rsi = 0.0
+            st.warning("RSI is still calculating...")
+        else:
+            c_rsi = float(raw_rsi.iloc[0]) if hasattr(raw_rsi, 'iloc') else float(raw_rsi)
 
-        # Opening Range શોધવી
+        # Opening Range શોધવી (છેલ્લા ટ્રેડિંગ દિવસની પહેલી 15 મિનિટ)
         latest_day = df.index[-1].date()
         day_data = df[df.index.date == latest_day]
-        or_high = float(day_data['High'].iloc[0])
-        or_low = float(day_data['Low'].iloc[0])
+        
+        raw_high = day_data['High'].iloc[0]
+        raw_low = day_data['Low'].iloc[0]
+        
+        or_high = float(raw_high.iloc[0]) if hasattr(raw_high, 'iloc') else float(raw_high)
+        or_low = float(raw_low.iloc[0]) if hasattr(raw_low, 'iloc') else float(raw_low)
 
         # Metrics ડિસ્પ્લે
         m1, m2, m3 = st.columns(3)
@@ -65,11 +73,11 @@ try:
 
         # બ્રેકઆઉટ સિગ્નલ લોજિક
         if curr_price > or_high and (c_rsi > 60 or (35 <= c_rsi <= 45)):
-            st.success(f"🔥 BULLISH BREAKOUT! Price is above {or_high:.2f}")
+            st.success(f"🔥 BULLISH BREAKOUT! Price is holding above {or_high:.2f}")
         elif curr_price < or_low and (c_rsi < 40 or (55 <= c_rsi <= 65)):
-            st.error(f"⚠️ BEARISH BREAKDOWN! Price is below {or_low:.2f}")
+            st.error(f"⚠️ BEARISH BREAKDOWN! Price is dropping below {or_low:.2f}")
         else:
-            st.info("Market is currently within range or neutral.")
+            st.info("Market is currently in range or indicators are neutral.")
 
     else:
         st.warning("No data found. Please check ticker symbol.")
