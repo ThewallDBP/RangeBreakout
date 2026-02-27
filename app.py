@@ -1,50 +1,84 @@
+import streamlit as st
 import yfinance as yf
+import pandas as pd
 import math
+import pandas_ta as ta
 
-def get_gann_levels(symbol):
-    try:
-        # લાઈવ ડેટા ફેચ કરવો
-        data = yf.download(symbol, period="1d", interval="1m")
-        if data.empty:
-            print(f"ડેટા મળ્યો નથી: {symbol}")
-            return
+# Page Title
+st.set_page_config(page_title="Nifty Gann & ORB Scanner", layout="wide")
+st.title("📊 Nifty Gann Levels & Stock Scanner")
 
-        current_price = data['Close'].iloc[-1]
+# --- Function for Gann Levels ---
+def get_gann_levels(price):
+    sqrt_price = math.sqrt(price)
+    levels = {"90°": 0.5, "180°": 1.0, "270°": 1.5, "360°": 2.0}
+    data = []
+    for deg, factor in levels.items():
+        res = math.pow(sqrt_price + factor, 2)
+        sup = math.pow(sqrt_price - factor, 2)
+        data.append({"Degree": deg, "Support": round(sup, 2), "Resistance": round(res, 2)})
+    return pd.DataFrame(data), round(sqrt_price, 2)
+
+# --- Sidebar Inputs ---
+st.sidebar.header("Settings")
+symbol = st.sidebar.text_input("Enter Ticker (NSE)", value="^NSEI")
+st.sidebar.info("Use .NS for stocks (e.g., RELIANCE.NS)")
+
+# --- Main App Logic ---
+try:
+    # Fetch Data
+    df = yf.download(symbol, period="2d", interval="15m")
+    daily = yf.download(symbol, period="5d", interval="1d")
+    
+    if not df.empty:
+        curr_price = df['Close'].iloc[-1]
         
-        # વર્ગમૂળની ગણતરી
-        sqrt_price = math.sqrt(current_price)
+        # 1. Gann Analysis Section
+        st.subheader(f"📐 Gann Analysis for {symbol}")
+        col1, col2 = st.columns(2)
         
-        # નિફ્ટી કયા નંબરના વર્ગની નજીક છે?
-        nearest_base = round(sqrt_price)
-        base_square = math.pow(nearest_base, 2)
+        gann_df, sqrt_val = get_gann_levels(curr_price)
+        nearest_sq = round(sqrt_val)
+        
+        with col1:
+            st.metric("Current Price", round(curr_price, 2))
+            st.write(f"Nifty is near square of: **{nearest_sq}** (Square: {nearest_sq**2})")
+        
+        with col2:
+            st.table(gann_df)
 
-        print(f"\n{'='*40}")
-        print(f"સ્ટોક/નિફ્ટી: {symbol}")
-        print(f"વર્તમાન ભાવ: {current_price:.2f}")
-        print(f"નજીકનો સ્ક્વેર નંબર: {nearest_base} (વર્ગ: {base_square:.2f})")
-        print(f"{'='*40}")
+        # 2. ORB Scanner Section
+        st.divider()
+        st.subheader("🚀 Opening Range & Indicators Status")
+        
+        # Indicators
+        df['RSI'] = ta.rsi(df['Close'], length=14)
+        df['SMA20'] = ta.sma(df['Close'], length=20)
+        
+        # Today's ORB
+        today_df = df[df.index.date == df.index[-1].date()]
+        or_high = today_df['High'].iloc[0]
+        or_low = today_df['Low'].iloc[0]
+        
+        # Current Stats
+        c_rsi = df['RSI'].iloc[-1]
+        c_sma = df['SMA20'].iloc[-1]
+        
+        col3, col4, col5 = st.columns(3)
+        col3.metric("15m RSI", round(c_rsi, 2))
+        col4.metric("OR High", round(or_high, 2))
+        col5.metric("20 SMA", round(c_sma, 2))
 
-        # Gann Degrees (90° = +0.5, 180° = +1.0, 270° = +1.5)
-        degrees = {
-            "90° ": 0.5,
-            "180°": 1.0,
-            "270°": 1.5,
-            "360°": 2.0
-        }
+        # Signal Logic
+        if curr_price > or_high and (c_rsi > 60 or (35 <= c_rsi <= 45)):
+            st.success(f"🔥 BULLISH BREAKOUT Detected on {symbol}!")
+        elif curr_price < or_low and (c_rsi < 40 or (55 <= c_rsi <= 65)):
+            st.error(f"⚠️ BEARISH BREAKDOWN Detected on {symbol}!")
+        else:
+            st.info("Searching for breakout conditions...")
 
-        print(f"{'ડિગ્રી':<10} | {'સપોર્ટ':<10} | {'રેઝિસ્ટન્સ':<10}")
-        print("-" * 40)
+    else:
+        st.warning("No data found. Please check the ticker symbol.")
 
-        for deg, factor in degrees.items():
-            resistance = math.pow(sqrt_price + factor, 2)
-            support = math.pow(sqrt_price - factor, 2)
-            print(f"{deg:<10} | {support:<10.2f} | {resistance:<10.2f}")
-
-    except Exception as e:
-        print(f"ભૂલ આવી છે: {e}")
-
-# રન કરવા માટે
-if __name__ == "__main__":
-    # નિફ્ટી માટે '^NSEI' અને સ્ટોક માટે 'RELIANCE.NS' વાપરો
-    get_gann_levels("^NSEI") 
-    get_gann_levels("RELIANCE.NS")
+except Exception as e:
+    st.error(f"Error: {e}")
