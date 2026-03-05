@@ -88,3 +88,28 @@ if st.button("Start Global Scan 🔍"):
         st.table(res_df.style.applymap(color_signal, subset=['Signal']))
     else:
         st.info("No data found or conditions not met.")
+import pandas as pd
+import streamlit as st
+
+def calculate_max_pain(df):
+    strikes = df['Strike Price'].values
+    total_loss_list = []
+
+    for settlement_price in strikes:
+        # Loss for Call Writers
+        call_loss = df[df['Strike Price'] < settlement_price]
+        c_loss = ((settlement_price - call_loss['Strike Price']) * call_loss['Call_OI']).sum()
+        
+        # Loss for Put Writers
+        put_loss = df[df['Strike Price'] > settlement_price]
+        p_loss = ((put_loss['Strike Price'] - settlement_price) * put_loss['Put_OI']).sum()
+        
+        total_loss_list.append(c_loss + p_loss)
+
+    # Find the strike with minimum total loss
+    min_loss_index = total_loss_list.index(min(total_loss_list))
+    return strikes[min_loss_index]
+
+# In your Streamlit UI:
+# max_pain_level = calculate_max_pain(option_chain_data)
+# st.metric("Predicted Expiry Level (Max Pain)", max_pain_level)
