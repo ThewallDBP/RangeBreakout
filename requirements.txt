@@ -2,3 +2,4 @@ streamlit
 pandas
 ephem
 pytz
+pip install yfinance
