@@ -113,3 +113,60 @@ def calculate_max_pain(df):
 # In your Streamlit UI:
 # max_pain_level = calculate_max_pain(option_chain_data)
 # st.metric("Predicted Expiry Level (Max Pain)", max_pain_level)
+import streamlit as st
+import datetime
+
+def get_current_hora():
+    # હોરાનો ક્રમ (સૂર્યથી શરૂ કરીને ઉલટો ક્રમ: સૂર્ય, શુક્ર, બુધ, ચંદ્ર, શનિ, ગુરુ, મંગળ)
+    hora_order = ["Sun", "Venus", "Mercury", "Moon", "Saturn", "Jupiter", "Mars"]
+    
+    # અઠવાડિયાના દિવસ મુજબ પ્રથમ હોરાનો સ્વામી
+    day_first_hora = {
+        0: 0, # Monday -> Moon (ક્રમ મુજબ સેટ થશે)
+        1: 6, # Tuesday -> Mars
+        2: 2, # Wednesday -> Mercury
+        3: 5, # Thursday -> Jupiter
+        4: 1, # Friday -> Venus
+        5: 4, # Saturday -> Saturn
+        6: 0  # Sunday -> Sun
+    }
+    
+    # સોમવાર માટે ખાસ વ્યવસ્થા કારણ કે તે લિસ્ટમાં 3જા નંબરે છે
+    day_to_start_index = {0: 3, 1: 6, 2: 2, 3: 5, 4: 1, 5: 4, 6: 0}
+
+    now = datetime.datetime.now()
+    day_of_week = now.weekday() # 0=Monday, 6=Sunday
+    
+    # સૂર્યોદય આશરે 6:45 AM ગણીએ (તમે આને dynamic પણ કરી શકો)
+    sunrise = now.replace(hour=6, minute=45, second=0, microsecond=0)
+    
+    if now < sunrise:
+        # જો સૂર્યોદય પહેલાનો સમય હોય તો આગળના દિવસની હોરા ગણાય
+        day_of_week = (day_of_week - 1) % 7
+        hours_since_sunrise = (now + datetime.timedelta(days=1) - sunrise).seconds // 3600
+    else:
+        hours_since_sunrise = (now - sunrise).seconds // 3600
+
+    start_idx = day_to_start_index[day_of_week]
+    current_hora_idx = (start_idx + hours_since_sunrise) % 7
+    return hora_order[current_hora_idx]
+
+# --- Streamlit UI ---
+st.title("Dhaval's Astro-Stock Strategy 📊")
+
+current_hora = get_current_hora()
+
+st.subheader(f"અત્યારની હોરા: **{current_hora}**")
+
+# તમારા (પૂર્વાષાઢા) અને પત્ની (પૂર્વાભાદ્રપદ) માટેનું લોજિક
+if current_hora in ["Venus", "Jupiter"]:
+    st.success(f"🌟 આ સમય રોકાણ માટે અત્યંત શુભ છે! ({current_hora} હોરા)")
+elif current_hora == "Mercury":
+    st.info("📈 આ સમય એનાલિસિસ અને ગણતરી (Gann/Fibonacci) માટે શ્રેષ્ઠ છે.")
+elif current_hora == "Saturn":
+    st.warning("⚠️ શનિની હોરા છે, ઉતાવળમાં સોદા ન કરવા. ધીરજ રાખો.")
+else:
+    st.write(f"⚖️ અત્યારે {current_hora} ની હોરા ચાલે છે. સામાન્ય વહેવાર રાખવો.")
+
+st.divider()
+st.write("નોંધ: આ ગણતરી સરેરાશ સૂર્યોદય 6:45 AM મુજબ છે.")
